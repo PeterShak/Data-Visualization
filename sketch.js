@@ -1,80 +1,88 @@
-class SnowfallGraph {
+class DataVisualization {
   constructor() {
-    this.months = ["nov", "dec", "jan", "feb"];
-    this.currentMonth = "nov";  // Starting with November
-    this.dx = 0;
+    this.data = {};
+    this.currentDataset = null;
     this.yAxisOffset = 40;
-    this.allData = {};
     this.width = 600;
     this.height = 400;
+    this.daysInMonth = {
+      'nov': 30,
+      'dec': 31,
+      'jan': 31,
+      'feb': 28,
+    };
   }
 
-  preload() {
-    // Load JSON for each month
-    this.nov = loadJSON('https://www.ncei.noaa.gov/access/monitoring/daily-snow/NY-snowfall-202411.json');
-    this.dec = loadJSON('https://www.ncei.noaa.gov/access/monitoring/daily-snow/NY-snowfall-202412.json');
-    this.jan = loadJSON('https://www.ncei.noaa.gov/access/monitoring/daily-snow/NY-snowfall-202501.json');
-    this.feb = loadJSON('https://www.ncei.noaa.gov/access/monitoring/daily-snow/NY-snowfall-202502.json');
+  addData(label, dataValues) {
+    this.data[label] = dataValues.map(value => parseFloat(value));
   }
 
   setup() {
     createCanvas(this.width, this.height);
-    this.dx = (this.width - this.yAxisOffset) / 33;  // Space between each day's data point
-    // Extract snowfall data for each month
-    this.allData.nov = this.extractSnowfallData(this.nov);
-    this.allData.dec = this.extractSnowfallData(this.dec);
-    this.allData.jan = this.extractSnowfallData(this.jan);
-    this.allData.feb = this.extractSnowfallData(this.feb);
     noLoop();
   }
 
   draw() {
     background(220);
-    let dataToDraw = this.allData[this.currentMonth];
 
-    let px = this.yAxisOffset + this.dx;  // 1st day
-    let py = map(dataToDraw[0], 0, 3, this.height * 0.8, this.height * 0.2);  
+    if (!this.currentDataset) {
+      textAlign(CENTER, CENTER);
+      textSize(20);
+      text("Please select a dataset (n, d, j, f)", this.width / 2, this.height / 2);
+      return;
+    }
+
+    let dataToDraw = this.data[this.currentDataset];
+
+    if (!dataToDraw) {
+      textAlign(CENTER, CENTER);
+      textSize(20);
+      text("No data for the selected dataset.", this.width / 2, this.height / 2);
+      return;
+    }
+
+    let numDataPoints = this.daysInMonth[this.currentDataset];
+    let dx = (this.width - this.yAxisOffset - 40) / (numDataPoints - 1);
+
+    let minValue = Math.min(...dataToDraw);
+    let maxValue = Math.max(...dataToDraw);
+
+    let px = this.yAxisOffset;
+    let py = this.mapY(dataToDraw[0], minValue, maxValue);
 
     for (let i = 1; i < dataToDraw.length; i++) {
-      let cx = this.yAxisOffset + this.dx * (i + 1);  
-      let cy = map(dataToDraw[i], 0, 3, this.height * 0.8, this.height * 0.2);  
-      line(px, py, cx, cy);  
-      px = cx;  
-      py = cy;  
+      let cx = this.yAxisOffset + dx * i;
+      let cy = this.mapY(dataToDraw[i], minValue, maxValue);
+
+      line(px, py, cx, cy);
+      px = cx;
+      py = cy;
     }
 
-    this.axes();
+    this.axes(numDataPoints);
     this.labels();
-    this.drawDays();
-    this.drawMonth();
+    this.drawDays(numDataPoints);
+    this.drawDatasetLabel();
   }
 
-  extractSnowfallData(jsonData) {
-    let centralParkData = [];
-    let data = jsonData.data["USW00094728"];  // Central Park data
-    
-    if (data) {
-      let dailyData = data.values;
-      for (let day in dailyData) {
-        let snowfall = dailyData[day];
-        if (snowfall === "T") snowfall = 0;
-        else if (snowfall === "M") continue;
-        else snowfall = parseFloat(snowfall);
-        if (!isNaN(snowfall)) centralParkData.push(snowfall);
-      }
-    }
-    return centralParkData;
+  mapY(value, minValue, maxValue) {
+    return map(value, minValue, maxValue, this.height * 0.8, this.height * 0.2);
   }
 
-  axes() {
+  axes(numDataPoints) {
     line(this.yAxisOffset, this.height * 0.1, this.yAxisOffset, this.height * 0.88);
-    line(this.yAxisOffset, this.height * 0.88, this.width - 20, this.height * 0.88);
+    line(this.yAxisOffset, this.height * 0.88, this.width - 40, this.height * 0.88);
 
     for (let i = 0; i <= 3; i++) {
       let yPosition = map(i, 0, 3, this.height * 0.8, this.height * 0.2);
       textAlign(RIGHT, CENTER);
       textSize(12);
       text(i, this.yAxisOffset - 10, yPosition);
+    }
+
+    for (let i = 0; i < numDataPoints; i++) {
+      let xPosition = this.yAxisOffset + (this.width - this.yAxisOffset - 40) * (i / (numDataPoints - 1));
+      line(xPosition, this.height * 0.88, xPosition, this.height * 0.9);
     }
   }
 
@@ -83,57 +91,60 @@ class SnowfallGraph {
     textSize(16);
     text("Day of Month", this.width / 2, this.height * 0.95);
     textSize(20);
-    text("Daily Snowfall at Central Park", this.width / 2, this.height * 0.05);
-    
+    text("Data Visualization", this.width / 2, this.height * 0.05);
+
     textAlign(CENTER, CENTER);
     push();
     translate(this.yAxisOffset - 30, this.height / 2);
     rotate(PI * 1.5);
     textSize(16);
-    text("Snowfall (in inches)", 0, 0);
+    text("Value", 0, 0);
     pop();
   }
 
-  drawDays() {
-    let dataToDraw = this.allData[this.currentMonth];
-    for (let i = 0; i < dataToDraw.length; i++) {
+  drawDays(numDataPoints) {
+    let dataToDraw = this.data[this.currentDataset];
+    for (let i = 0; i < numDataPoints; i++) {
+      let xPosition = this.yAxisOffset + (this.width - this.yAxisOffset - 40) * (i / (numDataPoints - 1));
       textAlign(CENTER, CENTER);
       textSize(12);
-      text(i + 1, this.yAxisOffset + this.dx * (i + 1), this.height * 0.91);  
+      text(i + 1, xPosition, this.height * 0.91);
     }
   }
 
-  drawMonth() {
+  drawDatasetLabel() {
     textAlign(CENTER, CENTER);
     textSize(18);
-    text(this.currentMonth.toUpperCase(), this.width / 2, this.height * 0.1);  
+    text(this.currentDataset.toUpperCase(), this.width / 2, this.height * 0.1);
   }
 
   keyPressed() {
-    if (key === 'n' || key === 'N') this.currentMonth = 'nov';
-    else if (key === 'd' || key === 'D') this.currentMonth = 'dec';
-    else if (key === 'j' || key === 'J') this.currentMonth = 'jan';
-    else if (key === 'f' || key === 'F') this.currentMonth = 'feb';
+    if (key === 'n' || key === 'N') this.currentDataset = 'nov';
+    else if (key === 'd' || key === 'D') this.currentDataset = 'dec';
+    else if (key === 'j' || key === 'J') this.currentDataset = 'jan';
+    else if (key === 'f' || key === 'F') this.currentDataset = 'feb';
     redraw();
   }
 }
 
-// Initialize the graph object
-let snowfallGraph;
+let dataViz;
 
 function preload() {
-  snowfallGraph = new SnowfallGraph();
-  snowfallGraph.preload();
+  dataViz = new DataVisualization();
+  dataViz.addData('nov', [1, 2, 3, 4, 2, 3, 1, 0, 5, 3, 2, 4, 1, 0, 2, 1, 0, 3, 2, 4, 5, 0, 0, 3, 1, 0, 2, 4, 0, 3, 2]);
+  dataViz.addData('dec', [2, 3, 1, 4, 2, 0, 3, 5, 1, 4, 3, 0, 4, 1, 3, 2, 5, 4, 1, 2, 0, 3, 1, 4, 0, 3, 2, 0, 1, 3, 4]);
+  dataViz.addData('jan', [1, 2, 1, 0, 3, 4, 2, 1, 3, 2, 4, 1, 0, 0, 2, 3, 4, 1, 3, 2, 0, 1, 3, 2, 4, 0, 3, 1, 2, 4, 1]);
+  dataViz.addData('feb', [2, 3, 4, 1, 2, 0, 3, 1, 4, 5, 3, 2, 4, 3, 1, 0, 2, 3, 1, 4, 0, 3, 2, 0, 1, 5, 4, 3, 2, 0, 1]);
 }
 
 function setup() {
-  snowfallGraph.setup();
+  dataViz.setup();
 }
 
 function draw() {
-  snowfallGraph.draw();
+  dataViz.draw();
 }
 
 function keyPressed() {
-  snowfallGraph.keyPressed();
+  dataViz.keyPressed();
 }
